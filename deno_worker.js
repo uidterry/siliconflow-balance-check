@@ -1,4 +1,4 @@
-// Deno script for SiliconFlow Balance Checker
+// Deno script for SiliconFlow Balance Checker - Optimized Version
 
 import { serve } from 'https://deno.land/std@0.170.0/http/server.ts';
 
@@ -29,61 +29,35 @@ async function handleRequest(request: Request): Promise<Response> {
 
 async function checkToken(token: string): Promise<Response> {
   try {
-    const apiResponse = await fetch('https://api.siliconflow.cn/v1/chat/completions', {
-      method: 'POST',
+    const apiResponse = await fetch('https://api.siliconflow.cn/v1/user/info', { // 直接请求 /v1/user/info
+      method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.291 Safari/537.36',
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-        'x-stainless-os': 'Unknown',
-        'x-stainless-lang': 'js',
-        'sec-ch-ua-mobile': '?0',
-        'x-stainless-package-version': '4.59.0',
-        'x-stainless-runtime': 'browser:chrome',
-        'x-stainless-arch': 'unknown',
-        'x-stainless-runtime-version': '120.0.6099',
-        'x-api-key': token,
-        'sec-ch-ua-platform': 'macOS',
-        'Sec-Fetch-Site': 'cross-site',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Dest': 'empty',
-        'Accept-Language': 'zh-CN'
-      },
-      body: JSON.stringify({
-        "model": "Qwen/Qwen2.5-7B-Instruct",
-        "messages": [
-          {
-            "role": "user",
-            "content": "hi"
-          }
-        ],
-        "max_tokens": 100,
-        "stream": false
-      })
+        'Authorization': `Bearer ${token}`
+      }
     });
 
-    if (apiResponse.ok) {
-      const balanceResponse = await fetch('https://api.siliconflow.cn/v1/user/info', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      const balanceData = await balanceResponse.json();
+    if (apiResponse.ok) { // 200 响应表示 API KEY 有效
+      const balanceData = await apiResponse.json();
       const balance = balanceData.data.totalBalance;
-      return new Response(JSON.stringify({ isValid: true, balance }), {
+      return new Response(JSON.stringify({ isValid: true, balance }), { // 返回有效和余额
         headers: { 'Content-Type': 'application/json' }
       });
-    } else {
-      const errorData = await apiResponse.json();
-      return new Response(JSON.stringify({ isValid: false, message: errorData.message }), {
+    } else { // 非 200 响应表示 API KEY 无效
+      let errorMessage = 'API KEY 无效'; // 默认错误消息
+      try {
+        const errorText = await apiResponse.text(); // 尝试获取错误响应文本
+        errorMessage = errorText; // 使用接口返回的错误信息
+      } catch (e) {
+        // 如果解析错误响应文本失败，则使用默认错误消息
+        console.error("解析错误响应失败:", e);
+      }
+      return new Response(JSON.stringify({ isValid: false, message: errorMessage }), { // 返回无效和错误消息
+        status: apiResponse.status, // 可以返回原始状态码，方便调试
         headers: { 'Content-Type': 'application/json' }
       });
     }
   } catch (error) {
-    return new Response(JSON.stringify({ isValid: false, message: `请求失败: ${error.message}` }), {
+    return new Response(JSON.stringify({ isValid: false, message: `请求失败: ${error.message}` }), { // 网络请求失败
       headers: { 'Content-Type': 'application/json' }
     });
   }
@@ -321,8 +295,8 @@ function getHTML(): string {
           const invalidTokensResults = [];
           let completed = 0;
 
-          // Process tokens concurrently but with a limit
-          const concurrencyLimit = 20;
+          // Process tokens concurrently
+          const concurrencyLimit = 20; // 可以根据需要调整并发数量
           const chunks = [];
           for (let i = 0; i < tokens.length; i += concurrencyLimit) {
             chunks.push(tokens.slice(i, i + concurrencyLimit));
@@ -340,11 +314,7 @@ function getHTML(): string {
 
             results.forEach(result => {
               if (!result.isValid) {
-                if (result.message === 'Sorry, your account balance is insufficient') {
-                  zeroBalanceTokens.push(\`\${result.token} (余额: 0)\`);
-                } else {
-                  invalidTokensResults.push(result);
-                }
+                invalidTokensResults.push(result); //  失效账号直接加入 invalidTokensResults
               } else {
                 const balance = parseFloat(result.balance);
                 const threshold = parseFloat(document.getElementById('balanceThreshold').value) || 0;
